@@ -6,26 +6,15 @@ pub mod open_close_account {
     use super::*;
     pub fn initialize(ctx: Context<Initialize>) -> ProgramResult {
         msg!("Attempting to open account");
-        ctx.accounts.account.data = 0;
+        ctx.accounts.account.authority = ctx.accounts.get_authority();
         Ok(())
     }
 
     pub fn close(ctx: Context<Close>) -> ProgramResult {
         msg!("Attempting to close account");
-        // get the current lamports in the account
-        let account_lamports = ctx.accounts.account.to_account_info().lamports();
-        // extract all the lamports from the created account
-        **ctx
-            .accounts
-            .account
-            .to_account_info()
-            .try_borrow_mut_lamports()? = 0;
-        // add all the account lamports to the authority account
-        **ctx
-            .accounts
-            .authority
-            .to_account_info()
-            .try_borrow_mut_lamports()? += account_lamports;
+        if ctx.accounts.validate_authority() {
+            return Err(ErrorCode::Unauthorized.into());
+        }
         Ok(())
     }
 }
@@ -35,7 +24,8 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + 8
+        // Anchor account discriminator + publicKey size
+        space = 8 + 32
     )]
     pub account: ProgramAccount<'info, OpenAccount>,
     #[account(signer)]
@@ -46,8 +36,17 @@ pub struct Initialize<'info> {
 
 #[derive(Accounts)]
 pub struct Close<'info> {
-    #[account(mut)]
+    /*
+        By using the close constraint, anchor automatically closes
+        the account and returns the lamports back to the target,
+        in this case the target is the authority account.
+    */
+    #[account(mut, close = authority)]
     pub account: ProgramAccount<'info, OpenAccount>,
+    /*
+        The signer constraint ensures the authority signed the
+        transaction.
+    */
     #[account(signer)]
     pub authority: AccountInfo<'info>,
     #[account(address = system_program::ID)]
@@ -56,5 +55,23 @@ pub struct Close<'info> {
 
 #[account]
 pub struct OpenAccount {
-    data: u8,
+    authority: Pubkey,
+}
+
+impl<'info> Initialize<'info> {
+    fn get_authority(&self) -> Pubkey {
+        *self.authority.to_account_info().key
+    }
+}
+
+impl<'info> Close<'info> {
+    fn validate_authority(&self) -> bool {
+        self.account.authority != *self.authority.key
+    }
+}
+
+#[error]
+pub enum ErrorCode {
+    #[msg("You are not authorized to perform this action.")]
+    Unauthorized,
 }
