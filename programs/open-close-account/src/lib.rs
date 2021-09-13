@@ -12,17 +12,20 @@ pub mod open_close_account {
 
     pub fn close(ctx: Context<Close>) -> ProgramResult {
         msg!("Attempting to close account");
-        let open_account_lamports = ctx.accounts.account.to_account_info().lamports();
+        // get the current lamports in the account
+        let account_lamports = ctx.accounts.account.to_account_info().lamports();
+        // extract all the lamports from the created account
         **ctx
             .accounts
             .account
             .to_account_info()
-            .try_borrow_mut_lamports()? -= open_account_lamports;
+            .try_borrow_mut_lamports()? = 0;
+        // add all the account lamports to the authority account
         **ctx
             .accounts
             .authority
             .to_account_info()
-            .try_borrow_mut_lamports()? += open_account_lamports;
+            .try_borrow_mut_lamports()? += account_lamports;
         Ok(())
     }
 }
