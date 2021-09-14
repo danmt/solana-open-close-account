@@ -4,9 +4,10 @@ use anchor_lang::solana_program::system_program;
 #[program]
 pub mod open_close_account {
     use super::*;
-    pub fn initialize(ctx: Context<Initialize>) -> ProgramResult {
+    pub fn initialize(ctx: Context<Initialize>, bump: u8) -> ProgramResult {
         msg!("Attempting to open account");
         ctx.accounts.account.authority = ctx.accounts.get_authority();
+        ctx.accounts.account.bump = bump;
         Ok(())
     }
 
@@ -20,12 +21,16 @@ pub mod open_close_account {
 }
 
 #[derive(Accounts)]
+#[instruction(bump: u8)]
 pub struct Initialize<'info> {
     #[account(
         init,
         payer = authority,
         // Anchor account discriminator + publicKey size
-        space = 8 + 32
+        space = 8 + 32 + 1,
+        // This account is a PDA
+        seeds = [authority.key.as_ref()],
+        bump = bump
     )]
     pub account: ProgramAccount<'info, OpenAccount>,
     #[account(signer)]
@@ -56,6 +61,7 @@ pub struct Close<'info> {
 #[account]
 pub struct OpenAccount {
     authority: Pubkey,
+    bump: u8,
 }
 
 impl<'info> Initialize<'info> {
